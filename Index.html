@@ -1,0 +1,277 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Delivery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const cart = [];
+            const cartTotalElement = document.getElementById('cart-total');
+            const checkoutButton = document.getElementById('checkout-button');
+            const searchInput = document.getElementById('search-input');
+            const cartPopup = document.getElementById('cart-popup');
+            const cartItemsContainer = document.getElementById('cart-items');
+            const closeCartPopupButton = document.getElementById('close-cart-popup');
+            const deliveryMethodSelect = document.getElementById('delivery-method');
+            const sendOrderButton = document.getElementById('send-order-button');
+            const deliveryDetailsContainer = document.getElementById('delivery-details');
+            const pickupDetailsContainer = document.getElementById('pickup-details');
+            const menuContainer = document.getElementById('menu-container');
+            const categoryTabs = document.getElementById('category-tabs');
+
+            const SHEET_ID = '1wjmrhFm6YGl3qW3ItuaoyP3iBEW00HLpbJMQfepMAhE';
+            const API_KEY = 'AIzaSyBFVTYb00MswQpYrshKV9HE0oEqG4_aoSM';
+            const SHEET_NAME = 'Sheet1';
+
+            function updateCartTotal() {
+                const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+                cartTotalElement.textContent = `Total: R$${total.toFixed(2)}`;
+            }
+
+            function addToCart(name, price) {
+                const existingItem = cart.find(item => item.name === name);
+                if (existingItem) {
+                    existingItem.quantity += 1;
+                } else {
+                    cart.push({ name, price, quantity: 1 });
+                }
+                updateCartTotal();
+            }
+
+            function removeFromCart(name) {
+                const itemIndex = cart.findIndex(item => item.name === name);
+                if (itemIndex > -1) {
+                    cart.splice(itemIndex, 1);
+                }
+                updateCartTotal();
+                showCartPopup();
+            }
+
+            function changeQuantity(name, quantity) {
+                const item = cart.find(item => item.name === name);
+                if (item) {
+                    item.quantity = quantity;
+                }
+                updateCartTotal();
+                showCartPopup();
+            }
+
+            function showCartPopup() {
+                cartItemsContainer.innerHTML = '';
+                cart.forEach(item => {
+                    const cartItem = document.createElement('div');
+                    cartItem.className = 'flex justify-between items-center mb-2';
+                    cartItem.innerHTML = `
+                        <span>${item.name} - R$${item.price.toFixed(2)}</span>
+                        <div class="flex items-center">
+                            <input type="number" min="1" value="${item.quantity}" class="w-12 text-center border rounded" data-name="${item.name}" />
+                            <button class="remove-from-cart bg-red-500 text-white px-2 py-1 rounded ml-2" data-name="${item.name}">Remover</button>
+                        </div>
+                    `;
+                    cartItemsContainer.appendChild(cartItem);
+                });
+
+                document.querySelectorAll('.remove-from-cart').forEach(button => {
+                    button.addEventListener('click', function () {
+                        const name = this.dataset.name;
+                        removeFromCart(name);
+                    });
+                });
+
+                document.querySelectorAll('input[type="number"]').forEach(input => {
+                    input.addEventListener('change', function () {
+                        const name = this.dataset.name;
+                        const quantity = parseInt(this.value);
+                        changeQuantity(name, quantity);
+                    });
+                });
+
+                cartPopup.classList.remove('hidden');
+            }
+
+            function closeCartPopup() {
+                cartPopup.classList.add('hidden');
+            }
+
+            function loadMenuItems() {
+                fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SHEET_NAME}?key=${API_KEY}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const rows = data.values;
+                        const categories = {};
+
+                        rows.forEach((row, index) => {
+                            if (index === 0) return; // Skip header row
+                            const [name, price, description, photo, category] = row;
+                            if (!categories[category]) {
+                                categories[category] = [];
+                            }
+                            categories[category].push({ name, price, description, photo });
+                        });
+
+                        for (const category in categories) {
+                            const categoryTab = document.createElement('a');
+                            categoryTab.className = 'py-2 px-4 text-gray-600';
+                            categoryTab.href = `#${category}`;
+                            categoryTab.textContent = category;
+                            categoryTabs.appendChild(categoryTab);
+
+                            const categoryContainer = document.createElement('div');
+                            categoryContainer.className = 'mb-8';
+                            categoryContainer.id = category;
+                            categoryContainer.innerHTML = `<h2 class="text-2xl font-semibold mb-4">${category}</h2>`;
+                            categories[category].forEach(item => {
+                                const menuItem = document.createElement('div');
+                                menuItem.className = 'menu-item bg-white p-4 rounded-lg shadow-md mb-4 flex items-center';
+                                menuItem.innerHTML = `
+                                    <div class="flex-1">
+                                        <h2 class="text-lg font-semibold">${item.name}</h2>
+                                        <p class="text-gray-600">${item.description}</p>
+                                        <p class="text-lg font-bold mt-2">R$${item.price}</p>
+                                        <button class="add-to-cart bg-green-500 text-white px-2 py-1 rounded mt-2" data-name="${item.name}" data-price="${item.price}">Adicionar ao Carrinho</button>
+                                    </div>
+                                    <img alt="${item.name}" class="w-20 h-20 rounded-lg" src="${item.photo}" />
+                                `;
+                                categoryContainer.appendChild(menuItem);
+                            });
+                            menuContainer.appendChild(categoryContainer);
+                        }
+
+                        document.querySelectorAll('.add-to-cart').forEach(button => {
+                            button.addEventListener('click', function () {
+                                const name = this.dataset.name;
+                                const price = parseFloat(this.dataset.price);
+                                addToCart(name, price);
+                            });
+                        });
+                    });
+            }
+
+            checkoutButton.addEventListener('click', function () {
+                showCartPopup();
+            });
+
+            closeCartPopupButton.addEventListener('click', function () {
+                closeCartPopup();
+            });
+
+            searchInput.addEventListener('input', function () {
+                const query = this.value.toLowerCase();
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    const itemName = item.querySelector('h2').textContent.toLowerCase();
+                    if (itemName.includes(query)) {
+                        item.classList.remove('hidden');
+                    } else {
+                        item.classList.add('hidden');
+                    }
+                });
+            });
+
+            deliveryMethodSelect.addEventListener('change', function () {
+                const selectedMethod = this.value;
+                if (selectedMethod === 'Entrega') {
+                    deliveryDetailsContainer.classList.remove('hidden');
+                    pickupDetailsContainer.classList.add('hidden');
+                } else if (selectedMethod === 'Retirada') {
+                    deliveryDetailsContainer.classList.add('hidden');
+                    pickupDetailsContainer.classList.remove('hidden');
+                } else {
+                    deliveryDetailsContainer.classList.add('hidden');
+                    pickupDetailsContainer.classList.add('hidden');
+                }
+            });
+
+            sendOrderButton.addEventListener('click', function () {
+                const selectedMethod = deliveryMethodSelect.value;
+                let whatsappMessage = `Gostaria de finalizar meu pedido:%0A`;
+                const orderText = cart.map(item => `${item.name} - R$${item.price.toFixed(2)} x ${item.quantity}`).join('%0A');
+                const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+                whatsappMessage += `${orderText}%0ATotal: R$${total.toFixed(2)}%0AMétodo de entrega: ${selectedMethod}`;
+
+                if (selectedMethod === 'Entrega') {
+                    const address = document.getElementById('delivery-address').value;
+                    const phone = document.getElementById('delivery-phone').value;
+                    if (address && phone) {
+                        whatsappMessage += `%0AEndereço: ${address}%0ATelefone: ${phone}`;
+                        window.location.href = `https://wa.me/44988315550?text=${whatsappMessage}`;
+                    } else {
+                        alert('Por favor, preencha todos os campos de entrega.');
+                    }
+                } else if (selectedMethod === 'Retirada') {
+                    const name = document.getElementById('pickup-name').value;
+                    const phone = document.getElementById('pickup-phone').value;
+                    if (name && phone) {
+                        whatsappMessage += `%0ANome: ${name}%0ATelefone: ${phone}`;
+                        window.location.href = `https://wa.me/44988315550?text=${whatsappMessage}`;
+                    } else {
+                        alert('Por favor, preencha todos os campos de retirada.');
+                    }
+                } else {
+                    alert('Por favor, selecione um método de entrega.');
+                }
+            });
+
+            loadMenuItems();
+        });
+    </script>
+</head>
+<body class="bg-gray-100">
+<!-- Header -->
+<div class="bg-red-600 p-4 flex items-center justify-between">
+    <input id="search-input" class="p-2 rounded w-full max-w-xs" placeholder="Insira um endereço aqui..." type="text"/>
+    <i class="fas fa-search text-white ml-4"></i>
+</div>
+<!-- Navigation Tabs -->
+<div id="category-tabs" class="bg-white shadow-md flex justify-around">
+    <!-- Category tabs will be dynamically added here -->
+</div>
+<!-- Menu Items -->
+<div id="menu-container" class="p-4">
+    <!-- Menu items will be dynamically added here -->
+</div>
+<!-- Cart and Checkout -->
+<div class="fixed bottom-0 left-0 right-0 bg-white p-4 shadow-md flex justify-between items-center">
+    <div>
+        <p id="cart-total" class="text-lg font-semibold">Total: R$0,00</p>
+    </div>
+    <button id="checkout-button" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
+        <i class="fab fa-whatsapp mr-2"></i>
+        Finalizar Pedido
+    </button>
+</div>
+
+<!-- Cart Popup -->
+<div id="cart-popup" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-11/12 max-w-lg">
+        <h2 class="text-xl font-semibold mb-4">Seu Carrinho</h2>
+        <div id="cart-items" class="mb-4">
+            <!-- Cart items will be dynamically added here -->
+        </div>
+        <div id="delivery-method-container" class="mb-4">
+            <label for="delivery-method" class="block text-gray-700">Método de entrega:</label>
+            <select id="delivery-method" class="w-full p-2 border rounded">
+                <option value="">Selecione...</option>
+                <option value="Entrega">Entrega</option>
+                <option value="Retirada">Retirada</option>
+            </select>
+        </div>
+        <div id="delivery-details" class="hidden mb-4">
+            <label for="delivery-address" class="block text-gray-700">Endereço:</label>
+            <input id="delivery-address" class="w-full p-2 border rounded mb-2" type="text" placeholder="Endereço completo"/>
+            <label for="delivery-phone" class="block text-gray-700">Telefone:</label>
+            <input id="delivery-phone" class="w-full p-2 border rounded" type="text" placeholder="Telefone"/>
+        </div>
+        <div id="pickup-details" class="hidden mb-4">
+            <label for="pickup-name" class="block text-gray-700">Nome:</label>
+            <input id="pickup-name" class="w-full p-2 border rounded mb-2" type="text" placeholder="Seu nome"/>
+            <label for="pickup-phone" class="block text-gray-700">Telefone:</label>
+            <input id="pickup-phone" class="w-full p-2 border rounded" type="text" placeholder="Telefone"/>
+        </div>
+        <button id="send-order-button" class="bg-green-500 text-white px-4 py-2 rounded mr-2">Enviar Pedido</button>
+        <button id="close-cart-popup" class="bg-red-500 text-white px-4 py-2 rounded">Fechar</button>
+    </div>
+</div>
+</body>
+</html>
